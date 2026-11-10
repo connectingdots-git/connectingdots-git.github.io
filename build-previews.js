@@ -55,13 +55,21 @@ async function processOne(file) {
   const thumb = await sharp(file).rotate().resize({ width: 382, withoutEnlargement: true })
     .webp({ quality: 72 }).toFile(path.join(OUT, "thumbs", slug + ".webp"));
   await sharp(file).rotate().resize(fit(2000)).webp({ quality: 82 }).toFile(path.join(OUT, "large", slug + ".webp"));
-  const og = await sharp(file).rotate().resize(fit(1200)).jpeg({ quality: 78, mozjpeg: true })
-    .toFile(path.join(OUT, "og", slug + ".jpg"));
+  // Link-preview card: always 1200x630 (the wide shape chat apps show large),
+  // with the whole photo centered on a blurred, darkened copy of itself.
+  const W = 1200, H = 630;
+  const backdrop = await sharp(file).rotate().resize(W, H, { fit: "cover" })
+    .blur(40).modulate({ brightness: 0.55 }).toBuffer();
+  const front = await sharp(file).rotate().resize(W, H, { fit: "inside", withoutEnlargement: false }).toBuffer();
+  const og = await sharp(backdrop).composite([{ input: front, gravity: "center" }])
+    .jpeg({ quality: 84, mozjpeg: true }).toFile(path.join(OUT, "og", slug + ".jpg"));
 
   // Preview page for chat apps
   const ogImg = `${SITE}/og/${slug}.jpg`, page = `${SITE}/p/${slug}/`, gallery = `${SITE}/#${slug}`;
   const title = pretty(name);
-  const desc = album ? `From the album ${pretty(album.split("/").pop())}` : `From ${siteName}`;
+  // No description on purpose: fewer text lines in the preview, so the photo dominates.
+  // A favicon.png at the top level of the repo shows as a small icon beside your name.
+  const icon = fs.existsSync("favicon.png") ? `<link rel="icon" href="${SITE}/favicon.png">\n` : "";
   fs.mkdirSync(path.join(OUT, "p", slug), { recursive: true });
   fs.writeFileSync(path.join(OUT, "p", slug, "index.html"), `<!doctype html>
 <html lang="en">
@@ -72,10 +80,11 @@ async function processOne(file) {
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${esc(siteName)}">
 <meta property="og:title" content="${esc(title)}">
-<meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${esc(ogImg)}">
 <meta property="og:image:width" content="${og.width}">
 <meta property="og:image:height" content="${og.height}">
+<meta property="og:image:alt" content="${esc(title)}">
+${icon}
 <meta property="og:url" content="${esc(page)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="${esc(ogImg)}">
